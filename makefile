@@ -5,13 +5,19 @@ MAIN=parser
 SOURCES=$(shell find -type f -name '*.c')
 OBJECTS=$(patsubst %.c, %.o, $(SOURCES))
 
-.PHONY: all clean
+.PHONY: all clean recompile
 
 all: $(MAIN)
 
 $(MAIN): $(OBJECTS)
 	@echo "Compiling..."
 	$(CC) $(FLAGS) $^ -o $@
+	@echo "Done!"
+
+recompile:
+	@echo "Recompiling..."
+	rm -rf $(MAIN) *.o *.gch
+	@make all
 	@echo "Done!"
 
 clean:

@@ -2,3 +2,5 @@
 *.gch
 *.txt
 *.csv
+.vscode
+parser

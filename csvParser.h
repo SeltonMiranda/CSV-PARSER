@@ -20,7 +20,14 @@ typedef char      s8;
 typedef unsigned char ERRNO; // For different types of errors that might occur
 
 #define REGION_DEFAULT_CAPACITY (8 * 1024)
-#define BUCKETS 128
+#define BUCKETS 8
+
+typedef enum {
+    INTEGER = 0,
+    FLOAT,
+    BOOLEAN,
+    STRING
+} ColumnType;
 
 typedef struct Region Region;
 typedef struct Region {
@@ -40,7 +47,6 @@ typedef struct HashEntry {
     struct HashEntry *next;
 } HashEntry;
 
-
 typedef struct HashTable {
     HashEntry *buckets[BUCKETS];
 } HashTable;
@@ -50,14 +56,17 @@ typedef struct Row {
 } Row; 
 
 typedef struct CSV {
+    HashTable index_table;
+    ColumnType *type;
+    u8 **header;
+    Row *rows;
     u64 rows_count;
     u64 cols_count;
-    Arena allocator;
-    HashTable index_table;
-    u8 **headers;
-    Row *rows;
 } CSV;
 
+/*  
+ * ARENA ALLOCATOR IMPLEMENTATION
+ */
 Region *new_region(size_t capacity);
 void free_region(Region *r);
 void *arena_alloc(Arena *a, size_t bytes);
@@ -65,9 +74,37 @@ void *arena_realloc(Arena *a, void *_oldptr, size_t _oldsize, size_t _newsize);
 void arena_reset(Arena *a);
 void arena_free(Arena *a);
 
-void insert_into_hash(HashTable *table, char *key, size_t index, Arena *a);
-u32 get_column_index(HashTable *table, const char *key);
+/*  
+ * ARENA ALLOCATOR IMPLEMENTATION
+ */
 
-ERRNO read_csv(const char *content, CSV *csv);
+/*  
+ * HASHTABLE IMPLEMENTATION
+ */
+void insert_into_hash(HashTable *table, u8 *key, s32 index, Arena *a);
+s32 get_column_index(HashTable *table, const char *key);
+/*  
+ * HASHTABLE IMPLEMENTATION
+ */
+
+/*  
+ * CSV IMPLEMENTATION
+ */
 void init_csv(CSV *csv);
 void deinit_csv(CSV *csv);
+void print_csv(CSV *csv);
+ERRNO read_csv(const char *content, CSV *csv);
+u8 **get_column_at(CSV *csv, const u8 *column_name);
+ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output);
+ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output);
+
+u64 get_row_count(CSV *csv);
+u64 get_col_count(CSV *csv);
+u8 **get_header(CSV *csv);
+u8 **get_row_at(CSV *csv, u32 idx);
+
+/*  
+ * CSV IMPLEMENTATION
+ */
+
+
