@@ -82,7 +82,7 @@ void arena_free(Arena *a);
  * HASHTABLE IMPLEMENTATION
  */
 void insert_into_hash(HashTable *table, u8 *key, s32 index, Arena *a);
-s32 get_column_index(HashTable *table, const char *key);
+s32 get_column_index(CSV *csv, const char *key);
 /*  
  * HASHTABLE IMPLEMENTATION
  */
@@ -97,6 +97,18 @@ ERRNO read_csv(const char *content, CSV *csv);
 u8 **get_column_at(CSV *csv, const u8 *column_name);
 ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output);
 ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output);
+ERRNO save_to_csv(CSV *csv); // TODO
+
+ERRNO convert_column_to_integer(CSV *csv, u32 col, s64 col_output[]);
+ERRNO convert_column_to_float(CSV *csv, u32 col, double col_output[]);
+
+// TODO
+ERRNO append_column(CSV *csv, u8 column_to_append[]);
+ERRNO append_many_columns(CSV *csv, u8 *columns_to_append[]);
+ERRNO append_row(CSV *csv, u8 row_to_append[]);
+ERRNO append_many_rows(CSV *csv, u8 *rows_to_append[]);
+
+// TODO filter, mean, median, mode
 
 u64 get_row_count(CSV *csv);
 u64 get_col_count(CSV *csv);

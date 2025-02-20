@@ -134,10 +134,10 @@ void insert_into_hash(HashTable *table, u8 *key, s32 index, Arena *a)
    table->buckets[h] = new_entry;
 }
 
-s32 get_column_index(HashTable *table, const char *key)
+s32 get_column_index(CSV *csv, const char *key)
 {
    u64 h = hash_function(key);
-   HashEntry *entry = table->buckets[h];
+   HashEntry *entry = csv->index_table.buckets[h];
    while (entry) 
    {
        if (strcmp(entry->key, key) == 0)
@@ -149,8 +149,6 @@ s32 get_column_index(HashTable *table, const char *key)
    return -1; // Column not found
 }
 
-// TODO:
-// Remove allocator from csv struct, do it a static variable here, like tempArena. The user doesn't need to know.
 static Arena tempArena = {0};
 
 void init_csv(CSV *csv)
@@ -160,6 +158,10 @@ void init_csv(CSV *csv)
     csv->header = NULL;
     csv->rows = NULL;
     csv->type = NULL;
+    for (size_t i = 0; i < BUCKETS; i++)
+    {
+        csv->index_table.buckets[i] = NULL;
+    }
 }
 
 void deinit_csv(CSV *csv)
@@ -283,7 +285,7 @@ static u32 count_rows(FILE *file)
     }
     rewind(file);
     fgets(line, sizeof(line), file); // Retrieve header
-    return num_lines - 1; 
+    return num_lines; 
 }
 
 static s32 parse_header(CSV *csv, FILE *file)
@@ -512,7 +514,7 @@ void print_csv(CSV *csv)
 
 u8 **get_column_at(CSV *csv, const u8 *column_name)
 {
-    s32 idx = get_column_index(&csv->index_table, column_name);
+    s32 idx = get_column_index(csv, column_name);
     if (idx == -1)
     {
         return NULL;
@@ -539,7 +541,7 @@ u8 **get_column_at(CSV *csv, const u8 *column_name)
 
 ERRNO convert_cell_to_integer(CSV *csv, u32 at_row, u32 at_col, s64 *output)
 {
-    if (!csv || at_row >= get_row_count(csv) || at_row < 0 || !output)
+    if (!csv || at_row >= get_row_count(csv) || at_row < 0 || !output || csv->type[at_col] != INTEGER)
     {
         return -1;
     }
@@ -564,7 +566,9 @@ ERRNO convert_cell_to_integer(CSV *csv, u32 at_row, u32 at_col, s64 *output)
 
 ERRNO convert_cell_to_float(CSV *csv, u32 at_row, u32 at_col, double *output)
 {
-    if (!csv || at_row >= get_row_count(csv) || at_row < 0 || !output)
+
+
+    if (!csv || at_row >= get_row_count(csv) || at_row < 0 || !output || csv->type[at_col] != FLOAT)
     {
         return -1;
     }
@@ -584,5 +588,39 @@ ERRNO convert_cell_to_float(CSV *csv, u32 at_row, u32 at_col, double *output)
     }
 
     *output = value;
+    return 1;
+}
+
+ERRNO convert_column_to_integer(CSV *csv, u32 col, s64 col_output[])
+{
+    if (csv->type[col] != INTEGER)
+    {
+        return 0;
+    }
+
+    for (size_t row = 0; row < get_row_count(csv) - 1; row++)
+    {
+        if (!convert_cell_to_integer(csv, row, col, &col_output[row]))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+ERRNO convert_column_to_float(CSV *csv, u32 col, double col_output[])
+{
+    if (csv->type[col] != FLOAT)
+    {
+        return 0;
+    }
+
+    for (size_t row = 0; row < get_row_count(csv) - 1; row++)
+    {
+        if (!convert_cell_to_float(csv, row, col, &col_output[row]))
+        {
+            return 0;
+        }
+    }
     return 1;
 }
