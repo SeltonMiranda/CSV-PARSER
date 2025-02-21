@@ -150,6 +150,7 @@ s32 get_column_index(CSV *csv, const char *key)
 }
 
 static Arena tempArena = {0};
+static Arena tempColArrayArena = {0};
 
 void init_csv(CSV *csv)
 {
@@ -206,12 +207,12 @@ static u8 is_bool(u8 *data)
 static void detect_column_type(CSV *csv, u32 col)
 {
     u8 is_integer, is_float, is_boolean, is_string;
+    is_boolean = 1;
+    is_integer = 1;
+    is_float = 0;
+    
     for (size_t row = 0; row < csv->rows_count; row++)
     {
-        is_boolean = 1;
-        is_integer = 1;
-        is_float = 0;
-
         u8 *data = csv->rows[row].data[col];
         if (!data || !(*data)) // if data is empty, skip
         {
@@ -228,6 +229,8 @@ static void detect_column_type(CSV *csv, u32 col)
         {
             if (!isdigit(data[c]))
             {
+                // DO LATER -> check wheter "dot" is the first character, if so,
+                // append "0" before it, making it a float type (or may do it in the convert_cell_to_float function)
                 if ((data[c] == '.' && !has_dot) && c > 0)
                 {
                     is_float = 1;
@@ -246,19 +249,19 @@ static void detect_column_type(CSV *csv, u32 col)
 
     if (is_integer)
     {
-        csv->type[col] = INTEGER;
+        csv->type[col] = CSV_TYPE_INTEGER;
     } 
     else if (is_boolean)
     {
-        csv->type[col] = BOOLEAN;
+        csv->type[col] = CSV_TYPE_BOOLEAN;
     }
     else if (is_float)
     {
-        csv->type[col] = FLOAT;
+        csv->type[col] = CSV_TYPE_FLOAT;
     }
     else
     {
-        csv->type[col] = STRING;
+        csv->type[col] = CSV_TYPE_STRING;
     }
 }
 
@@ -336,7 +339,7 @@ static u8 *get_token_before_delim(const u8 *str, const u8 *delims, const u8**nex
         }
     }
 
-    *next = first_delim ? first_delim + 1 : NULL;
+    (*next) = first_delim ? first_delim + 1 : NULL;
     size_t len = first_delim ? (size_t)(first_delim - str) : strlen(str);
 
     if (len == 0)
@@ -469,25 +472,25 @@ void print_csv(CSV *csv)
         printf(" Type:");
         switch (csv->type[col])
         {
-            case INTEGER:
+            case CSV_TYPE_INTEGER:
             {
                 printf("Integer");
             }
             break;
 
-            case FLOAT:
+            case CSV_TYPE_FLOAT:
             {
                 printf("Float");
             }
             break;
 
-            case BOOLEAN:
+            case CSV_TYPE_BOOLEAN:
             {
                 printf("Boolean");
             }
             break;
 
-            case STRING:
+            case CSV_TYPE_STRING:
             {
                 printf("String");
             }
@@ -541,7 +544,10 @@ u8 **get_column_at(CSV *csv, const u8 *column_name)
 
 ERRNO convert_cell_to_integer(CSV *csv, u32 at_row, u32 at_col, s64 *output)
 {
-    if (!csv || at_row >= get_row_count(csv) || at_row < 0 || !output || csv->type[at_col] != INTEGER)
+    if (
+            !csv || at_row >= get_row_count(csv) ||
+            at_row < 0 || !output || csv->type[at_col] != CSV_TYPE_INTEGER
+       )
     {
         return -1;
     }
@@ -568,7 +574,10 @@ ERRNO convert_cell_to_float(CSV *csv, u32 at_row, u32 at_col, double *output)
 {
 
 
-    if (!csv || at_row >= get_row_count(csv) || at_row < 0 || !output || csv->type[at_col] != FLOAT)
+    if (
+        !csv || at_row >= get_row_count(csv) ||
+        at_row < 0 || !output || csv->type[at_col] != CSV_TYPE_FLOAT
+       )
     {
         return -1;
     }
@@ -593,7 +602,7 @@ ERRNO convert_cell_to_float(CSV *csv, u32 at_row, u32 at_col, double *output)
 
 ERRNO convert_column_to_integer(CSV *csv, u32 col, s64 col_output[])
 {
-    if (csv->type[col] != INTEGER)
+    if (csv->type[col] != CSV_TYPE_INTEGER)
     {
         return 0;
     }
@@ -610,7 +619,7 @@ ERRNO convert_column_to_integer(CSV *csv, u32 col, s64 col_output[])
 
 ERRNO convert_column_to_float(CSV *csv, u32 col, double col_output[])
 {
-    if (csv->type[col] != FLOAT)
+    if (csv->type[col] != CSV_TYPE_FLOAT)
     {
         return 0;
     }
@@ -618,6 +627,100 @@ ERRNO convert_column_to_float(CSV *csv, u32 col, double col_output[])
     for (size_t row = 0; row < get_row_count(csv) - 1; row++)
     {
         if (!convert_cell_to_float(csv, row, col, &col_output[row]))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static ERRNO append_new_field(CSV *csv, u8 *new_field)
+{
+    u32 old_cols = get_col_count(csv);
+    u32 new_cols = old_cols + 1;
+    csv->type = arena_realloc(
+                                &tempArena,
+                                csv->type,
+                                sizeof(ColumnType) * old_cols,
+                                sizeof(ColumnType) * new_cols
+                             );
+    if (!csv->type)
+    {
+        return 0;
+    }
+
+    csv->header = arena_realloc(
+                                    &tempArena,
+                                    csv->header,
+                                    sizeof(u8 *) * old_cols,
+                                    sizeof(u8 *) * new_cols
+                               );
+    csv->header[new_cols - 1] = arena_alloc(&tempArena, strlen(new_field) + 1);
+    if (!csv->header[new_cols - 1])
+    {
+        return 0;
+    }
+    strcpy(csv->header[new_cols - 1], new_field);
+    return 1;
+}
+
+ERRNO append_column(CSV *csv, u8 **column_to_append, u32 rows)
+{
+    if (!csv || !column_to_append || rows != get_row_count(csv)) // diff types of errors, gotta split them later
+    {
+        return 0;
+    }
+    if (!append_new_field(csv, *column_to_append))
+    {
+        
+        return 0;
+    }
+
+    u32 old_cols = get_col_count(csv);
+    u32 new_cols = old_cols + 1;
+    for (s64 row = 0; row < get_row_count(csv) - 1; row++)
+    {
+        csv->rows[row].data = arena_realloc(
+                                            &tempArena,
+                                            csv->rows[row].data,
+                                            sizeof(u8 *) * old_cols,
+                                            sizeof(u8 *) * new_cols
+                                           );
+        if (!csv->rows[row].data)
+        {
+            return 0;
+        }
+
+        if (column_to_append[row + 1])
+        {
+            csv->rows[row].data[new_cols - 1] = arena_alloc(&tempArena, strlen(column_to_append[row + 1]) + 1);
+            if (!csv->rows[row].data[new_cols - 1])
+            {
+                return 0;
+            }
+            strcpy(csv->rows[row].data[new_cols - 1], column_to_append[row + 1]);
+        }
+        else
+        {
+            csv->rows[row].data[new_cols - 1] = arena_alloc(&tempArena, strlen("NULL") + 1);
+            strcpy(csv->rows[row].data[new_cols - 1], "NULL");
+        }
+    }
+    detect_column_type(csv, new_cols - 1);
+    csv->cols_count++;
+    return 1;
+}
+
+ERRNO append_many_columns(CSV *csv, u8 ***columns_to_append, u32 rows, u32 cols)
+{
+    if (!columns_to_append)
+    {
+        return 0;
+    }
+
+    for (s64 col = 0; col < cols; col++)
+    {
+        if (!append_column(csv, columns_to_append[col], rows))
         {
             return 0;
         }

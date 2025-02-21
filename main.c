@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "csvParser.h"
+#include <stdlib.h>
 
 int main() {
     CSV csv;
@@ -10,25 +11,31 @@ int main() {
         return 1;
     }
     
-    long int integer_column[get_row_count(&csv) - 1];
-    int idx = get_column_index(&csv, "sal");
-    if (idx == -1)
+    //printf("rows: %lu, cols: %lu\n", get_row_count(&csv), get_col_count(&csv));
+    print_csv(&csv);
+
+    u8 *new_column[][6] = {
+        {"CPF", "999999.9", "888888", "777777", "666666", "555555"},
+        {"Age", "101", "32", "41", "15", "76"},
+        {"Phone", "9999-9999", "888-888", "777-777", "666-666", "555-555"}
+    };
+
+    u8 ***ptr = malloc(sizeof(u8 **) * 3);
+    for (size_t i = 0; i < 3; i++)
     {
-        printf("Unknown column name\n");
+        ptr[i] = new_column[i];
+    }
+
+    if (!append_many_columns(&csv, ptr, 6, 3))
+    {
+        printf("not possible\n");
         return 1;
     }
+    free(ptr);
 
-    if (!convert_column_to_integer(&csv, idx, integer_column))
-    {
-        printf("cannot convert\n");
-        return 1;
-    }
-
-    for (size_t i = 0; i < get_row_count(&csv) - 1; i++)
-    {
-        printf("value : %ld\n", integer_column[i]);
-    }
-
+    printf("--------------------------------------------------------------------------------\n");
+    print_csv(&csv);
+    
     deinit_csv(&csv);
     return 0;
 }
