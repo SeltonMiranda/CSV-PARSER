@@ -11,7 +11,7 @@ all: $(MAIN)
 
 $(MAIN): $(OBJECTS)
 	@echo "Compiling..."
-	$(CC) $(FLAGS) $^ -o $@
+	$(CC) $(FLAGS) $^ -o $@ -lm
 	@echo "Done!"
 
 recompile:

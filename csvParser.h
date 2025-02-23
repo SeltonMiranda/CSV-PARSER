@@ -17,10 +17,19 @@ typedef int       s32;
 typedef short int s16;
 typedef char      s8;
 
+typedef u8 boolean;
 typedef unsigned char ERRNO; // For different types of errors that might occur
+
+#define TRUE 1
+#define FALSE 0
 
 #define REGION_DEFAULT_CAPACITY (8 * 1024)
 #define BUCKETS 8
+
+#define sv_null (String_View){ .data = NULL, .size = 0 }
+#define sv(c_str) (String_View){ .data = c_str, .size = strlen(c_str) }
+#define sv_args(str) (s64)(str.size), (str.data)
+#define sv_fmt "%.*s"
 
 typedef enum {
     CSV_TYPE_INTEGER = 0,
@@ -85,46 +94,41 @@ void arena_free(Arena *a);
  */
 
 /*  
- * HASHTABLE IMPLEMENTATION
- */
-void insert_into_hash(HashTable *table, u8 *key, s32 index, Arena *a);
-/*  
- * HASHTABLE IMPLEMENTATION
- */
-
-/*  
  * CSV IMPLEMENTATION
  */
 void init_csv(CSV *csv);
 void deinit_csv(CSV *csv);
 void print_csv(CSV *csv);
 ERRNO read_csv(const char *content, CSV *csv);
+ERRNO save_csv(const char *output_file, CSV *csv);
 
+boolean is_cell_empty(String_View cell);
+s64 to_integer(String_View cell);
+double to_float(String_View cell);
 ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output);
 ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output);
-ERRNO save_to_csv(CSV *csv); // TODO
 void fillna(CSV *csv);
+CSV dropna(CSV *input_csv); // TODO
 
-ERRNO convert_column_to_integer(CSV *csv, u32 col, s64 col_output[]);
-ERRNO convert_column_to_float(CSV *csv, u32 col, double col_output[]);
+ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows);
+ERRNO append_many_columns(CSV *csv, String_View **columns_to_append, u32 rows_to_append, u32 cols_to_append);
+ERRNO append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append);
+ERRNO append_many_rows(CSV *csv, String_View **rows_to_append, u32 many_rows, u32 many_cols);
 
-// TODO: append a column with at most csv->rows_count rows, if the rows parameter isn't the same as csv->rows_count
-// the difference (csv->rows_count - rows) is filled with "NULL"
-ERRNO append_column(CSV *csv, u8 **column_to_append, u32 rows);
-ERRNO append_many_columns(CSV *csv, u8 ***columns_to_append, u32 rows, u32 cols);
-ERRNO append_row(CSV *csv, u8 **row_to_append);
-ERRNO append_many_rows(CSV *csv, u8 ***rows_to_append);
 
-// TODO filter, mean, median, mode, treatment of NULL (empty values)
+ERRNO csv_mean(CSV *csv, String_View column_name, double *output);
+ERRNO csv_median(CSV *csv, String_View column_name, double *output);
+ERRNO csv_mode_integer(CSV *csv, String_View column_name, s64 *output); // for easy implementation, needs an hashmap
+ERRNO csv_mode_double(CSV *csv, String_View column_name, s64 *output); // for easy implementation, needs an hashmap
+ERRNO csv_sd(CSV *csv, String_View column_name, double *output);
 
-u8 **get_column_at(CSV *csv, const u8 *column_name);
-s32 get_column_index(CSV *csv, const char *key);
+s32 get_column_index(String_View *key);
 u64 get_row_count(CSV *csv);
 u64 get_col_count(CSV *csv);
-u8 **get_header(CSV *csv);
-u8 **get_row_at(CSV *csv, u32 idx);
-u8 *get_cell(u32 row, const u8 *column_name); // TODO
-void csv_filter(CSV *csv, s32 (*predicate)(u32 row)); // TODO
+const String_View *get_header(CSV *csv);
+const String_View *get_row_at(CSV *csv, u32 idx);
+String_View get_cell(CSV *csv, u32 row, String_View *column_name);
+String_View *csv_filter(CSV *csv, String_View column_name, boolean (*predicate)(String_View cell), u64 *out_count);
 
 
 // BRAINSTORMING
