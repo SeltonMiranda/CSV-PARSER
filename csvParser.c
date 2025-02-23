@@ -423,6 +423,27 @@ ERRNO read_csv(const char *content, CSV *csv)
         goto defer;
     }
 
+    fseek(file, 0, SEEK_END);
+    size_t file_size = ftell(file);
+    if (file_size < 0)
+    {
+        goto defer;
+    }
+    rewind(file);
+
+    u8 *buffer = arena_alloc(&tempArena, file_size + 1);
+    if (!buffer)
+    {
+        goto defer;
+    }
+
+    if ((fread(buffer, 1, file_size, file)) < 0)
+    {
+        goto defer;
+    }
+    buffer[file_size] = '\0';
+
+
     if (!parse_header(csv, file))
     {
         goto defer;
@@ -440,6 +461,11 @@ defer:
     if (file)
     {
         fclose(file);
+    }
+
+    if (buffer)
+    {
+        arena_free(&tempArena)
     }
     return 0;
 }

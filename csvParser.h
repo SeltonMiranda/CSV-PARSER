@@ -42,7 +42,7 @@ typedef struct Arena {
 } Arena;
 
 typedef struct HashEntry {
-    u8 *key;
+    String_View key;
     size_t index;
     struct HashEntry *next;
 } HashEntry;
@@ -51,17 +51,22 @@ typedef struct HashTable {
     HashEntry *buckets[BUCKETS];
 } HashTable;
 
+typedef struct String_View {
+    u8* data;
+    u64 size;
+} String_View;
+
 typedef struct Row {
-    u8 **data;
+    String_View *cells;
 } Row; 
 
 typedef struct CSV {
     HashTable index_table;
-    ColumnType *type;
-    u8 **header;
-    Row *rows;
-    u64 rows_count;
     u64 cols_count;
+    u64 rows_count;
+    ColumnType *type;
+    String_View *header;
+    Row *rows;
 } CSV;
 
 /*  
