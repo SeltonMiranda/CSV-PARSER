@@ -26,7 +26,8 @@ typedef enum {
     CSV_TYPE_INTEGER = 0,
     CSV_TYPE_FLOAT,
     CSV_TYPE_BOOLEAN,
-    CSV_TYPE_STRING
+    CSV_TYPE_STRING,
+    CSV_TYPE_UNKNOWN
 } ColumnType;
 
 typedef struct Region Region;
@@ -41,6 +42,11 @@ typedef struct Arena {
     Region *begin, *end;
 } Arena;
 
+typedef struct String_View {
+    u8* data;
+    u64 size;
+} String_View;
+
 typedef struct HashEntry {
     String_View key;
     size_t index;
@@ -50,11 +56,6 @@ typedef struct HashEntry {
 typedef struct HashTable {
     HashEntry *buckets[BUCKETS];
 } HashTable;
-
-typedef struct String_View {
-    u8* data;
-    u64 size;
-} String_View;
 
 typedef struct Row {
     String_View *cells;
@@ -102,6 +103,7 @@ ERRNO read_csv(const char *content, CSV *csv);
 ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output);
 ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output);
 ERRNO save_to_csv(CSV *csv); // TODO
+void fillna(CSV *csv);
 
 ERRNO convert_column_to_integer(CSV *csv, u32 col, s64 col_output[]);
 ERRNO convert_column_to_float(CSV *csv, u32 col, double col_output[]);

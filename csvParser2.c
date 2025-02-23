@@ -1,6 +1,7 @@
 #include "csvParser.h"
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,35 +121,48 @@ void arena_free(Arena *a)
 }
 
 // End Arena
+void init_csv(CSV *csv)
+{
+    csv->cols_count = 0;
+    csv->rows_count = 0;
+    csv->rows = NULL;
+    csv->header = NULL;
+    csv->type = NULL;
+}
 
-
+void deinit_csv(CSV *csv)
+{
+    arena_free(&tempArena);
+}
 
 static u64 count_rows_from_buffer(u8 *buffer)
 {
     u64 rows = 0;
-    while ((buffer = strchr(buffer, '\n')))
+    u8 *ptr = buffer;
+    while ((ptr = strchr(ptr, '\n')))
     {
         rows++;
-        buffer++;
+        ptr++;
     }
-    return rows;
+    return rows + 1;
 }
 
 static u64 count_columns_from_buffer(u8 *buffer)
 {
     u64 cols = 0;
-    while (*buffer && (*buffer == '\n' || *buffer == '\r'))
+    u8 *ptr = buffer;
+    while (*ptr && (*ptr == '\n' || *ptr == '\r'))
     {
-        buffer++;
+        ptr++;
     }
 
-    while (*buffer && *buffer != '\n')
+    while (*ptr && *ptr != '\n')
     {
-        if (*buffer == ';' || *buffer == ',')
+        if (*ptr == ';' || *ptr == ',')
         {
             cols++;
         }
-        buffer++;
+        ptr++;
     }
     return cols + 1;
 }
@@ -160,9 +174,14 @@ static ERRNO parse_header(CSV *csv, u8 *buffer)
     {
         return 0;
     }
+    for (size_t i = 0; i < csv->cols_count; i++)
+    {
+        csv->header[i].data = NULL;
+    }
 
     u8 *current = buffer;
-    for (s64 col; col < csv->cols_count; col++)
+    u64 col = 0;
+    while (*current && col < csv->cols_count)
     {
         csv->header[col].data = current;
         u8 *start = current;
@@ -171,22 +190,24 @@ static ERRNO parse_header(CSV *csv, u8 *buffer)
             current++;
         }
         csv->header[col].size = current - start;
-        if (*current)
+        if (*current == ';' || *current == ',')
         {
-            *current = '\0';
             current++;
         } 
+        col++;
     }
     return 1;
 }
 
+
 static ERRNO parse(CSV *csv, u8 *buffer)
 {
-    csv->rows = (Row *)arena_alloc(&tempArena, sizeof(Row) * csv->rows_count - 1);
+    csv->rows = (Row *)arena_alloc(&tempArena, sizeof(Row) * (csv->rows_count - 1));
     if (!csv->rows)
     {
         return 0;
     }
+    
     u8 *current = buffer;
     for (s64 row = 0; row < csv->rows_count - 1; row++)
     {   
@@ -194,6 +215,10 @@ static ERRNO parse(CSV *csv, u8 *buffer)
         if (!csv->rows[row].cells)
         {
             return 0;
+        }
+        for (size_t i = 0; i < csv->cols_count; i++)
+        {
+            csv->rows[row].cells[i].data = NULL;
         }
 
         u64 col = 0;
@@ -205,50 +230,71 @@ static ERRNO parse(CSV *csv, u8 *buffer)
             {
                 current++;
             }
-            csv->rows[row].cells[col].size = current - start;
-            if (*current)
+            csv->rows[row].cells[col].size = current - start;       
+            if (*current == ';' || *current == ',')
             {
-                *current = '\0';
                 current++;
             }
             col++;
         }
+
+        if (*current == '\0')
+        {
+            break;
+        }
+
+        if (*current == '\n')
+        {
+            current++;
+        }
     }
+    return 1;
+}
+
+#include <ctype.h>
+#include <string.h>
+#include <stdbool.h>
+
+static bool is_bool(String_View data)
+{
+    return (data.size == 4 && (!strncmp(data.data, "TRUE", 4) || !strncmp(data.data, "true", 4))) ||
+           (data.size == 5 && (!strncmp(data.data, "FALSE", 5) || !strncmp(data.data, "false", 5)));
 }
 
 static void detect_column_type(CSV *csv, u32 col)
 {
-    u8 is_integer, is_float, is_boolean, is_string;
-    is_boolean = 1;
-    is_integer = 1;
-    is_float = 0;
-    
+    bool is_integer = true, is_float = false, is_boolean = true;
+
     for (size_t row = 0; row < csv->rows_count - 1; row++)
     {
         String_View data = csv->rows[row].cells[col];
-        
-        if (!is_bool(data))
+        if (data.size == 0 || data.data == NULL)
         {
-            is_boolean = 0;
+            continue;
         }
 
-        u8 has_dot = 0;
-        for (size_t c = 0; data.data[c]; c++)
+        if (!is_bool(data))
         {
-            if (!isdigit(data.data[c]))
+            is_boolean = false;
+        }
+
+        bool has_dot = false;
+        for (size_t c = 0; c < data.size; c++)
+        {
+            char ch = data.data[c];
+
+            if (!isdigit((unsigned char)ch))
             {
-                // DO LATER -> check wheter "dot" is the first character, if so,
-                // append "0" before it, making it a float type (or may do it in the convert_cell_to_float function)
-                if ((data.data[c] == '.' && !has_dot) && c > 0)
+                if (ch == '.' && !has_dot && c > 0)
                 {
-                    is_float = 1;
-                    has_dot = 1;
-                    is_integer = 0;
+                    is_float = true;
+                    has_dot = true;
+                    is_integer = false;
                 }
                 else
                 {
-                    is_integer = 0;
-                    is_float = 0;
+                    is_integer = false;
+                    is_float = false;
                     break;
                 }
             }
@@ -258,7 +304,7 @@ static void detect_column_type(CSV *csv, u32 col)
     if (is_integer)
     {
         csv->type[col] = CSV_TYPE_INTEGER;
-    } 
+    }
     else if (is_boolean)
     {
         csv->type[col] = CSV_TYPE_BOOLEAN;
@@ -272,6 +318,7 @@ static void detect_column_type(CSV *csv, u32 col)
         csv->type[col] = CSV_TYPE_STRING;
     }
 }
+
 
 ERRNO read_csv(const char *content, CSV *csv)
 {
@@ -294,6 +341,7 @@ ERRNO read_csv(const char *content, CSV *csv)
     {
         goto defer;
     }
+    
 
     if ((fread(buffer, 1, file_size, file)) < 0)
     {
@@ -314,11 +362,12 @@ ERRNO read_csv(const char *content, CSV *csv)
         buffer++;
     }
     buffer++;
-
+    
     if (!parse(csv, buffer))
     {
         goto defer;
     }
+
 
     csv->type = (ColumnType *)arena_alloc(&tempArena, sizeof(ColumnType) * csv->cols_count);
     if (!csv->type)
@@ -351,49 +400,52 @@ void print_csv(CSV *csv)
 {
     for (size_t col = 0; col < csv->cols_count; col++)
     {
-        printf("%12s", csv->header[col]);
-        printf(" Type:");
+        printf("%-12.*s", (int)csv->header[col].size, csv->header[col].data);
+        printf(" Type: ");
+        
         switch (csv->type[col])
         {
             case CSV_TYPE_INTEGER:
-            {
                 printf("Integer");
-            }
-            break;
-
+                break;
             case CSV_TYPE_FLOAT:
-            {
                 printf("Float");
-            }
-            break;
-
+                break;
             case CSV_TYPE_BOOLEAN:
-            {
                 printf("Boolean");
-            }
-            break;
-
+                break;
             case CSV_TYPE_STRING:
-            {
                 printf("String");
-            }
-            break;
-
+                break;
             default:
-            {
                 printf("UNKNOWN");
-            }
-            break;
+                break;
         }
+        printf(" | ");
     }
     printf("\n");
     printf("------------------------------------\n");
-    for (size_t row = 0; row < csv->rows_count; row++)
+    for (size_t row = 0; row < csv->rows_count - 1; row++)
     {
         for (size_t col = 0; col < csv->cols_count; col++)
         {
-            printf("%24s", csv->rows[row].cells[col]);
+            printf("%-24.*s", (int)csv->rows[row].cells[col].size, csv->rows[row].cells[col].data);
         }
         printf("\n");
+    }
+}
+
+void fillna(CSV *csv)
+{
+    for (s64 row = 0; row < csv->rows_count - 1; row++)
+    {
+        for (s64 col = 0; col < csv->cols_count; col++)
+        {
+            if (csv->rows[row].cells[col].size == 0 || csv->rows[row].cells[col].data == NULL)
+            {
+                csv->rows[row].cells[col].data = "None";
+                csv->rows[row].cells[col].size = 4;
+            }
+        }
     }
 }
