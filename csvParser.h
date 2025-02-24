@@ -18,7 +18,6 @@ typedef short int s16;
 typedef char      s8;
 
 typedef u8 boolean;
-typedef unsigned char ERRNO; // For different types of errors that might occur
 
 #define TRUE 1
 #define FALSE 0
@@ -32,6 +31,22 @@ typedef unsigned char ERRNO; // For different types of errors that might occur
 #define sv_fmt "%.*s"
 
 #define BUFFER_SIZE 8192
+
+// Simple error system
+typedef enum {
+    NIL = 0,
+    ERR_MEM_ALLOC,
+    ERR_FILE_NOT_FOUND,
+    ERR_OPEN_FILE,
+    ERR_CSV_EMPTY,
+    ERR_EMPTY_CELL,
+    ERR_CSV_OUT_OF_BOUNDS,
+    ERR_CSV_DIFF_TYPE,
+    ERR_INVALID_COLUMN,
+    ERR_INVALID_ARG,
+    ERR_INCONSISTENT_COLUMNS,
+    ERR_UNKNOWN
+} ERRNO;
 
 typedef enum {
     CSV_TYPE_INTEGER = 0,
@@ -99,33 +114,34 @@ void arena_free(Arena *a);
 /*  
  * CSV IMPLEMENTATION
  */
+
+boolean error();
 void init_csv(CSV *csv);
 void deinit_csv(CSV *csv);
 void print_csv(CSV *csv);
-ERRNO read_csv(const char *content, CSV *csv);
-ERRNO save_csv(const char *output_file, CSV *csv);
+void read_csv(const char *content, CSV *csv);
+s32 save_csv(const char *output_file, CSV *csv);
 
 boolean is_csv_empty(CSV *csv);
 boolean is_cell_empty(String_View cell);
 s64 to_integer(String_View cell);
 double to_float(String_View cell);
-ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output);
-ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output);
+void convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output);
+void convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output);
 void fillna(CSV *csv);
 CSV dropna(CSV *input_csv);
 
-ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows);
-ERRNO append_many_columns(CSV *csv, String_View **columns_to_append, u32 rows_to_append, u32 cols_to_append);
-ERRNO append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append);
-ERRNO append_many_rows(CSV *csv, String_View **rows_to_append, u32 many_rows, u32 many_cols);
+void append_column(CSV *csv, String_View *column_to_append, u32 rows);
+void append_many_columns(CSV *csv, String_View **columns_to_append, u32 rows_to_append, u32 cols_to_append);
+void append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append);
+void append_many_rows(CSV *csv, String_View **rows_to_append, u32 many_rows, u32 many_cols);
 
-
-ERRNO csv_mean(CSV *csv, String_View column_name, double *output);
-ERRNO csv_median(CSV *csv, String_View column_name, double *output);
-ERRNO csv_mode_integer(CSV *csv, String_View column_name, s64 *output); // *TO-DO*, for easy implementation, needs an hashmap
-ERRNO csv_mode_double(CSV *csv, String_View column_name, s64 *output); // *TO-DO*, for easy implementation, needs an hashmap
-ERRNO csv_sd(CSV *csv, String_View column_name, double *output);
-ERRNO drop_duplicater(CSV *csv, String_View column_name); // TO-DO
+void csv_mean(CSV *csv, String_View column_name, double *output);
+void csv_median(CSV *csv, String_View column_name, double *output);
+void csv_mode_integer(CSV *csv, String_View column_name, s64 *output); // *TO-DO*, for easy implementation, needs an hashmap
+void csv_mode_double(CSV *csv, String_View column_name, s64 *output); // *TO-DO*, for easy implementation, needs an hashmap
+void csv_sd(CSV *csv, String_View column_name, double *output);
+void drop_duplicater(CSV *csv, String_View column_name); // TO-DO
 
 s32 get_column_index(String_View *key);
 u64 get_row_count(CSV *csv);

@@ -12,6 +12,66 @@
 #define BUCKETS 8
 
 static HashTable indexTable = {0};
+static s32 globalError = NIL;
+
+static void set_error(s32 error)
+{
+    globalError = error;
+}
+
+static ERRNO get_error()
+{
+    return globalError;
+}
+
+static void print_error() {
+    switch (globalError) {
+        case ERR_MEM_ALLOC:
+            printf("Erro: Falha na alocação de memória.\n");
+            break;
+        case ERR_FILE_NOT_FOUND:
+            printf("Erro: Arquivo não encontrado.\n");
+            break;
+        case ERR_OPEN_FILE:
+            printf("Erro: Falha ao abrir o arquivo.\n");
+            break;
+        case ERR_CSV_EMPTY:
+            printf("Erro: O arquivo CSV está vazio.\n");
+            break;
+        case ERR_EMPTY_CELL:
+            printf("Erro: Célula vazia detectada onde não deveria estar.\n");
+            break;
+        case ERR_CSV_OUT_OF_BOUNDS:
+            printf("Erro: Índice fora dos limites do CSV.\n");
+            break;
+        case ERR_CSV_DIFF_TYPE:
+            printf("Erro: Tipo de dado incompatível.\n");
+            break;
+        case ERR_INVALID_COLUMN:
+            printf("Erro: Nome de coluna inválido ou inexistente.\n");
+            break;
+        case ERR_INVALID_ARG:
+            printf("Erro: Argumento inválido passado para a função.\n");
+            break;
+        case ERR_INCONSISTENT_COLUMNS:
+            printf("Erro: Número inconsistente de colunas entre as linhas do CSV.\n");
+            break;
+        case ERR_UNKNOWN:
+        default:
+            printf("Erro desconhecido.\n");
+            break;
+    }
+}
+
+boolean error()
+{
+    if (get_error() != NIL)
+    {
+        print_error();
+        return TRUE;
+    }
+    return FALSE;
+}
 
 // Begin Arena
 
@@ -237,11 +297,12 @@ static u64 count_columns_from_buffer(u8 *buffer)
     return cols + 1;
 }
 
-static ERRNO parse_header(CSV *csv, u8 *buffer)
+static s32 parse_header(CSV *csv, u8 *buffer)
 {
     csv->header = (String_View *)arena_alloc(&csv->allocator, sizeof(String_View) * csv->cols_count);
     if (!csv->header)
     {
+        set_error(ERR_MEM_ALLOC);
         return 0;
     }
     for (size_t i = 0; i < csv->cols_count; i++)
@@ -272,11 +333,12 @@ static ERRNO parse_header(CSV *csv, u8 *buffer)
 }
 
 
-static ERRNO parse(CSV *csv, u8 *buffer)
+static s32 parse(CSV *csv, u8 *buffer)
 {
     csv->rows = (Row *)arena_alloc(&csv->allocator, sizeof(Row) * (csv->rows_count - 1));
     if (!csv->rows)
     {
+        set_error(ERR_MEM_ALLOC);
         return 0;
     }
     
@@ -286,6 +348,7 @@ static ERRNO parse(CSV *csv, u8 *buffer)
         csv->rows[row].cells = (String_View *)arena_alloc(&csv->allocator, sizeof(String_View) * csv->cols_count);
         if (!csv->rows[row].cells)
         {
+            set_error(ERR_MEM_ALLOC);
             return 0;
         }
         for (size_t i = 0; i < csv->cols_count; i++)
@@ -396,33 +459,28 @@ static void detect_column_type(CSV *csv, u32 col)
 }
 
 
-ERRNO read_csv(const char *content, CSV *csv)
+void read_csv(const char *content, CSV *csv)
 {
     FILE *file = fopen(content, "rb");
     if (!file)
     {
+        set_error(ERR_FILE_NOT_FOUND);
         goto defer;
     }
 
     fseek(file, 0, SEEK_END);
     size_t file_size = ftell(file);
-    if (file_size < 0)
-    {
-        goto defer;
-    }
     rewind(file);
 
     u8 *buffer = arena_alloc(&csv->allocator, file_size + 1);
     if (!buffer)
     {
+        set_error(ERR_MEM_ALLOC);
         goto defer;
     }
     
 
-    if ((fread(buffer, 1, file_size, file)) < 0)
-    {
-        goto defer;
-    }
+    fread(buffer, 1, file_size, file);
     buffer[file_size] = '\0';
 
     csv->rows_count = count_rows_from_buffer(buffer);
@@ -448,6 +506,7 @@ ERRNO read_csv(const char *content, CSV *csv)
     csv->type = (ColumnType *)arena_alloc(&csv->allocator, sizeof(ColumnType) * csv->cols_count);
     if (!csv->type)
     {
+        set_error(ERR_MEM_ALLOC);
         goto defer;
     }
 
@@ -457,7 +516,7 @@ ERRNO read_csv(const char *content, CSV *csv)
     }
     
     fclose(file);
-    return 1;
+    return;
 
 defer:
     if (file)
@@ -469,10 +528,10 @@ defer:
     {
         arena_free(&csv->allocator);
     }
-    return 0;
+    return;
 }
 
-ERRNO save_csv(const char *output_file, CSV *csv)
+s32 save_csv(const char *output_file, CSV *csv)
 {
     if (!csv)
     {
@@ -483,6 +542,7 @@ ERRNO save_csv(const char *output_file, CSV *csv)
     FILE *target = fopen(path_to_file, "wb");
     if (!target)
     {
+        set_error(ERR_OPEN_FILE);
         return 0;
     }
 
@@ -572,8 +632,9 @@ void print_csv(CSV *csv)
 
 void fillna(CSV *csv)
 {
-    if (!csv || csv->rows_count == 0)
+    if (!csv || is_csv_empty(csv))
     {
+        set_error(ERR_CSV_EMPTY);
         return;
     }
 
@@ -600,8 +661,9 @@ void fillna(CSV *csv)
 
 CSV dropna(CSV *input_csv)
 {   
-    if (!input_csv || input_csv->rows_count == 0)
+    if (!input_csv || is_csv_empty(input_csv))
     {
+        set_error(ERR_CSV_EMPTY);
         return (CSV){0};
     }
 
@@ -637,12 +699,14 @@ CSV dropna(CSV *input_csv)
     output_csv.header = arena_alloc(&output_csv.allocator, input_csv->cols_count * sizeof(String_View));
     if (!output_csv.header)
     {
+        set_error(ERR_MEM_ALLOC);
         return (CSV){0};
     }
     memcpy(output_csv.header, input_csv->header, input_csv->cols_count * sizeof(String_View));
     output_csv.rows = arena_alloc(&output_csv.allocator, valid_rows * sizeof(Row));
     if (!output_csv.rows)
     {
+        set_error(ERR_MEM_ALLOC);
         return (CSV){0};
     }
 
@@ -672,6 +736,7 @@ s64 to_integer(String_View cell)
 {
     if (cell.size == 0 || cell.data == NULL)
     {
+        set_error(ERR_EMPTY_CELL);
         return -1;
     }
     s8 buffer[21];
@@ -685,6 +750,7 @@ double to_float(String_View cell)
 {
     if (cell.size == 0 || cell.data == NULL)
     {
+        set_error(ERR_EMPTY_CELL);
         return -1.0;
     }
     s8 buffer[21];
@@ -708,27 +774,31 @@ boolean is_cell_empty(String_View cell)
     return FALSE;
 }
 
-ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output)
+void convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output)
 {
     if (!csv || !output)
     {
-        return 0;
+        set_error(ERR_CSV_EMPTY);
+        return;
     }
 
     if (row >= csv->rows_count || col >= csv->cols_count)
     {
-        return 0;
+        set_error(ERR_CSV_OUT_OF_BOUNDS);
+        return;
     }
 
     if (csv->type[col] != CSV_TYPE_INTEGER)
     {
-        return 0;
+        set_error(ERR_CSV_DIFF_TYPE);
+        return;
     }
 
     String_View cell = csv->rows[row - 1].cells[col];
     if (cell.size == 0)
     {
-        return 0;
+        set_error(ERR_EMPTY_CELL);
+        return;
     }
 
     s8 buffer[21];
@@ -737,30 +807,34 @@ ERRNO convert_cell_to_integer(CSV *csv, u32 row, u32 col, s64 *output)
 
     s8 *endptr;
     *output = strtoll(buffer, &endptr, 10);
-    return 1;
+    return;
 }
 
-ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output)
+void convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output)
 {
     if (!csv || !output)
     {
-        return 0;
+        set_error(ERR_CSV_EMPTY);
+        return;
     }
 
     if (row >= csv->rows_count || col >= csv->cols_count)
     {
-        return 0;
+        set_error(ERR_CSV_OUT_OF_BOUNDS);
+        return;
     }
 
     if (csv->type[col] != CSV_TYPE_FLOAT)
     {
-        return 0;
+        set_error(ERR_CSV_DIFF_TYPE);
+        return;
     }
 
     String_View cell = csv->rows[row - 1].cells[col];
     if (cell.size == 0)
     {
-        return 0;
+        set_error(ERR_EMPTY_CELL);
+        return;
     }
 
     s8 buffer[21];
@@ -769,7 +843,7 @@ ERRNO convert_cell_to_float(CSV *csv, u32 row, u32 col, double *output)
 
     s8 *endptr;
     *output = strtold(buffer, &endptr);
-    return 1;
+    return;
 }
 
 u64 get_row_count(CSV *csv)
@@ -786,6 +860,7 @@ const String_View *get_header(CSV *csv)
 {
     if (!csv)
     {
+        set_error(ERR_CSV_EMPTY);
         return NULL;
     }
     return csv->header;
@@ -796,6 +871,7 @@ String_View get_cell(CSV *csv, u32 row, String_View *column_name)
     s64 col = get_column_index(column_name);
     if (col == -1)
     {
+        set_error(ERR_INVALID_COLUMN);
         return sv_null;
     }
     return csv->rows[row - 1].cells[col];
@@ -805,21 +881,24 @@ const String_View *get_row_at(CSV *csv, u32 idx)
 {
     if (idx >= csv->rows_count)
     {
+        set_error(ERR_INVALID_COLUMN);
         return NULL;
     }
     return csv->rows[idx].cells;
 }
 
-ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows)
+void append_column(CSV *csv, String_View *column_to_append, u32 rows)
 {
     if (!csv || !column_to_append)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     if (rows != csv->rows_count)
     {
-        return 0;
+        set_error(ERR_CSV_OUT_OF_BOUNDS);
+        return;
     }
     u32 new_col_index = csv->cols_count;
     csv->cols_count++;
@@ -831,7 +910,8 @@ ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows)
                                );       
     if (!csv->header)
     {
-        return 0;
+        set_error(ERR_MEM_ALLOC);
+        return;
     }
     csv->header[new_col_index] = column_to_append[0];
 
@@ -845,47 +925,48 @@ ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows)
                                             );
         if (!csv->rows[row].cells)
         {
-            return 0;
+            set_error(ERR_MEM_ALLOC);
+            return;
         }
         csv->rows[row].cells[new_col_index] = column_to_append[row + 1];
     }
     detect_column_type(csv, new_col_index);
-    return 1;
+    return;
 }
 
-ERRNO append_many_columns(CSV *csv, String_View **columns_to_append, u32 rows_to_append, u32 cols_to_append)
+void append_many_columns(CSV *csv, String_View **columns_to_append, u32 rows_to_append, u32 cols_to_append)
 {
     if (!csv || !columns_to_append)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     if (rows_to_append != csv->rows_count)
     {
-        return 0;
+        set_error(ERR_CSV_OUT_OF_BOUNDS);
+        return;
     }
 
     for (u32 col = 0; col < cols_to_append; col++)
     {
-        if (!append_column(csv, columns_to_append[col], rows_to_append))
-        {
-            return 0;
-        }
+        append_column(csv, columns_to_append[col], rows_to_append);
     }
-
-    return 1;
+    return;
 }
 
-ERRNO append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append)
+void append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append)
 {
     if (!csv || !row_to_append)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     if (cols_to_append != csv->cols_count)
     {
-        return 0;
+        set_error(ERR_CSV_OUT_OF_BOUNDS);
+        return;
     }
 
     // This is mess hahaha
@@ -897,34 +978,33 @@ ERRNO append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append)
     csv->rows = (Row *)arena_realloc(&csv->allocator, csv->rows, sizeof(Row *) * (rows), sizeof(Row *) * (new_rows - 1));
     if (!csv->rows)
     {
-        return 0;
+        set_error(ERR_MEM_ALLOC);
+        return;
     }
     csv->rows[new_row_index].cells = row_to_append;
     // Needs check if each cell from new row matches the column type
-    return 1;
+    return;
 }
 
-ERRNO append_many_rows(CSV *csv, String_View **rows_to_append, u32 many_rows, u32 many_cols)
+void append_many_rows(CSV *csv, String_View **rows_to_append, u32 many_rows, u32 many_cols)
 {
     if (!csv || !rows_to_append)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     if (many_cols != get_col_count(csv))
     {
-        return 0;
+        set_error(ERR_INCONSISTENT_COLUMNS);
+        return;
     }
 
 
     for (s64 row = 0; row < many_rows; row++)
     {
-        if (!append_row(csv, rows_to_append[row], many_cols))
-        {
-            return 0;
-        }
+        append_row(csv, rows_to_append[row], many_cols);
     }
-    return 1;
 }
 
 
@@ -932,12 +1012,14 @@ String_View *csv_filter(CSV *csv, String_View column_name, boolean (*predicate)(
 {
     if (!csv || !predicate || !out_count)
     {
+        set_error(ERR_INVALID_ARG);
         return NULL;
     }
 
     s64 col = get_column_index(&column_name);
     if (col == -1)
     {
+        set_error(ERR_INVALID_COLUMN);
         return NULL;
     }
 
@@ -958,6 +1040,7 @@ String_View *csv_filter(CSV *csv, String_View column_name, boolean (*predicate)(
     String_View *filtered_cells = arena_alloc(&csv->allocator, sizeof(String_View) * (*out_count));
     if (!filtered_cells)
     {
+        set_error(ERR_MEM_ALLOC);
         return NULL;
     }
 
@@ -973,22 +1056,31 @@ String_View *csv_filter(CSV *csv, String_View column_name, boolean (*predicate)(
 }
 
 
-ERRNO csv_mean(CSV *csv, String_View column_name, double *output)
+void csv_mean(CSV *csv, String_View column_name, double *output)
 {
     if (!csv || column_name.size == 0 || !output)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     s64 col = get_column_index(&column_name);
     if (col == -1)
     {
-        return 0;
+        set_error(ERR_INVALID_COLUMN);
+        return;
     }
 
     if (csv->type[col] != CSV_TYPE_INTEGER && csv->type[col] != CSV_TYPE_FLOAT)
     {
-        return 0;
+        set_error(ERR_CSV_DIFF_TYPE);
+        return;
+    }
+
+    if (get_row_count(csv) == 0)
+    {
+        set_error(ERR_CSV_EMPTY);
+        return;
     }
 
     double sum = 0.0;
@@ -999,12 +1091,8 @@ ERRNO csv_mean(CSV *csv, String_View column_name, double *output)
             sum += to_float(csv->rows[row].cells[col]);
         }
     }
-    if (get_row_count(csv) == 0)
-    {
-        return 0;
-    }
+
     *output = sum / (get_row_count(csv) - 1);
-    return 1;
 }
 
 static s32 cmp_double(const void *a, const void *b)
@@ -1014,29 +1102,39 @@ static s32 cmp_double(const void *a, const void *b)
     return (da > db) - (da < db);
 }
 
-ERRNO csv_median(CSV *csv, String_View column_name, double *output)
+void csv_median(CSV *csv, String_View column_name, double *output)
 {
     if (!csv || column_name.size == 0 || !output)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     s64 col = get_column_index(&column_name);
-    if (col == -1 || (csv->type[col] != CSV_TYPE_INTEGER && csv->type[col] != CSV_TYPE_FLOAT))
+    if (col == -1)
     {
-        return 0;
+        set_error(ERR_INVALID_COLUMN);
+        return;
+    }
+
+    if ((csv->type[col] != CSV_TYPE_INTEGER && csv->type[col] != CSV_TYPE_FLOAT))
+    {
+        set_error(ERR_CSV_DIFF_TYPE);
+        return;
     }
 
     u64 row_count = get_row_count(csv) - 1;
     if (row_count == 0)
     {
-        return 0;
+        set_error(ERR_CSV_EMPTY);
+        return;
     }
 
     double *values = (double *)malloc(row_count * sizeof(double));
     if (!values)
     {
-        return 0;
+        set_error(ERR_MEM_ALLOC);
+        return;
     }
 
     u64 valid_count = 0;
@@ -1050,7 +1148,8 @@ ERRNO csv_median(CSV *csv, String_View column_name, double *output)
 
     if (valid_count == 0)
     {
-        return 0;
+        *output = 0.0;
+        return;
     }
 
     qsort(values, valid_count, sizeof(double), (int (*)(const void *, const void *))cmp_double);
@@ -1064,26 +1163,34 @@ ERRNO csv_median(CSV *csv, String_View column_name, double *output)
         *output = (values[valid_count / 2 - 1] + values[valid_count / 2]) / 2.0;
     }
     free(values);
-    return 1;
 }
 
-ERRNO csv_sd(CSV *csv, String_View column_name, double *output)
+void csv_sd(CSV *csv, String_View column_name, double *output)
 {
     if (!csv || column_name.size == 0 || !output)
     {
-        return 0;
+        set_error(ERR_INVALID_ARG);
+        return;
     }
 
     s64 col = get_column_index(&column_name);
-    if (col == -1 || (csv->type[col] != CSV_TYPE_INTEGER && csv->type[col] != CSV_TYPE_FLOAT))
+    if (col == -1)
     {
-        return 0;
+        set_error(ERR_INVALID_COLUMN);
+        return;
+    }
+
+    if ((csv->type[col] != CSV_TYPE_INTEGER && csv->type[col] != CSV_TYPE_FLOAT))
+    {
+        set_error(ERR_CSV_DIFF_TYPE);
+        return;
     }
 
     u64 row_count = get_row_count(csv) - 1;
     if (row_count == 0)
     {
-        return 0;
+        set_error(ERR_CSV_EMPTY);
+        return;
     }
 
     double sum = 0.0, sum_sq = 0.0;
@@ -1102,9 +1209,9 @@ ERRNO csv_sd(CSV *csv, String_View column_name, double *output)
 
     if (valid_count < 2)
     {
-        return 0;
+        *output = 0.0;
+        return;
     }
     double mean = sum / valid_count;
     *output = sqrt((sum_sq / valid_count) - (mean * mean));
-    return 1;
 }
