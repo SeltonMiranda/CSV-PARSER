@@ -11,7 +11,6 @@
 #define ALIGN_UP(x, a) (((x) + (a - 1)) & ~(a - 1))
 #define BUCKETS 8
 
-static Arena tempArena = {0};
 static HashTable indexTable = {0};
 
 // Begin Arena
@@ -136,10 +135,10 @@ static u64 hash_function(String_View *str) {
     return hash % BUCKETS;
 }
 
-static void insert_into_hash(String_View *key, s32 index)
+static void insert_into_hash(CSV *csv, String_View *key, s32 index)
 {
    u64 h = hash_function(key);
-   HashEntry *new_entry = arena_alloc(&tempArena, sizeof(HashEntry));
+   HashEntry *new_entry = arena_alloc(&csv->allocator, sizeof(HashEntry));
    new_entry->key = *key;
    new_entry->index = index;
    new_entry->next = indexTable.buckets[h];
@@ -197,11 +196,13 @@ void init_csv(CSV *csv)
     csv->rows = NULL;
     csv->header = NULL;
     csv->type = NULL;
+    csv->allocator.begin = NULL;
+    csv->allocator.end = NULL;
 }
 
 void deinit_csv(CSV *csv)
 {
-    arena_free(&tempArena);
+    arena_free(&csv->allocator);
 }
 
 static u64 count_rows_from_buffer(u8 *buffer)
@@ -238,7 +239,7 @@ static u64 count_columns_from_buffer(u8 *buffer)
 
 static ERRNO parse_header(CSV *csv, u8 *buffer)
 {
-    csv->header = (String_View *)arena_alloc(&tempArena, sizeof(String_View) * csv->cols_count);
+    csv->header = (String_View *)arena_alloc(&csv->allocator, sizeof(String_View) * csv->cols_count);
     if (!csv->header)
     {
         return 0;
@@ -260,7 +261,7 @@ static ERRNO parse_header(CSV *csv, u8 *buffer)
         }
         csv->header[col].size = current - start;
         trim(&csv->header[col]);
-        insert_into_hash(&csv->header[col], col);
+        insert_into_hash(csv, &csv->header[col], col);
         if (*current == ';' || *current == ',')
         {
             current++;
@@ -273,7 +274,7 @@ static ERRNO parse_header(CSV *csv, u8 *buffer)
 
 static ERRNO parse(CSV *csv, u8 *buffer)
 {
-    csv->rows = (Row *)arena_alloc(&tempArena, sizeof(Row) * (csv->rows_count - 1));
+    csv->rows = (Row *)arena_alloc(&csv->allocator, sizeof(Row) * (csv->rows_count - 1));
     if (!csv->rows)
     {
         return 0;
@@ -282,7 +283,7 @@ static ERRNO parse(CSV *csv, u8 *buffer)
     u8 *current = buffer;
     for (s64 row = 0; row < csv->rows_count - 1; row++)
     {   
-        csv->rows[row].cells = (String_View *)arena_alloc(&tempArena, sizeof(String_View) * csv->cols_count);
+        csv->rows[row].cells = (String_View *)arena_alloc(&csv->allocator, sizeof(String_View) * csv->cols_count);
         if (!csv->rows[row].cells)
         {
             return 0;
@@ -411,7 +412,7 @@ ERRNO read_csv(const char *content, CSV *csv)
     }
     rewind(file);
 
-    u8 *buffer = arena_alloc(&tempArena, file_size + 1);
+    u8 *buffer = arena_alloc(&csv->allocator, file_size + 1);
     if (!buffer)
     {
         goto defer;
@@ -444,7 +445,7 @@ ERRNO read_csv(const char *content, CSV *csv)
     }
 
 
-    csv->type = (ColumnType *)arena_alloc(&tempArena, sizeof(ColumnType) * csv->cols_count);
+    csv->type = (ColumnType *)arena_alloc(&csv->allocator, sizeof(ColumnType) * csv->cols_count);
     if (!csv->type)
     {
         goto defer;
@@ -466,7 +467,7 @@ defer:
 
     if (buffer)
     {
-        arena_free(&tempArena);
+        arena_free(&csv->allocator);
     }
     return 0;
 }
@@ -571,6 +572,11 @@ void print_csv(CSV *csv)
 
 void fillna(CSV *csv)
 {
+    if (!csv || csv->rows_count == 0)
+    {
+        return;
+    }
+
     for (s64 row = 0; row < csv->rows_count - 1; row++)
     {
         for (s64 col = 0; col < csv->cols_count; col++)
@@ -590,6 +596,76 @@ void fillna(CSV *csv)
             }
         }
     }
+}
+
+CSV dropna(CSV *input_csv)
+{   
+    if (!input_csv || input_csv->rows_count == 0)
+    {
+        return (CSV){0};
+    }
+
+    u64 valid_rows = 0;
+    for (u64 row = 0; row < get_row_count(input_csv) - 1; row++)
+    {
+        boolean empty = FALSE;
+        for (u64 col = 0; col < get_col_count(input_csv); col++)
+        {
+            if (is_cell_empty(input_csv->rows[row].cells[col]))
+            {
+                empty = TRUE;
+                break;
+            }
+        }
+
+        if (!empty)
+        {
+            valid_rows++;
+        }
+    }
+    
+    if (valid_rows == get_row_count(input_csv) - 1)
+    {
+        return (CSV){0};
+    }
+
+    CSV output_csv;
+    init_csv(&output_csv);
+    output_csv.cols_count = input_csv->cols_count;
+    output_csv.rows_count = valid_rows;
+    output_csv.type = input_csv->type;
+    output_csv.header = arena_alloc(&output_csv.allocator, input_csv->cols_count * sizeof(String_View));
+    if (!output_csv.header)
+    {
+        return (CSV){0};
+    }
+    memcpy(output_csv.header, input_csv->header, input_csv->cols_count * sizeof(String_View));
+    output_csv.rows = arena_alloc(&output_csv.allocator, valid_rows * sizeof(Row));
+    if (!output_csv.rows)
+    {
+        return (CSV){0};
+    }
+
+    u64 new_row = 0;
+    for (u64 row = 0; row < get_row_count(input_csv) - 1; row++)
+    {
+        boolean empty = FALSE;
+        for (u64 col = 0; col < get_col_count(input_csv); col++)
+        {
+            if (is_cell_empty(input_csv->rows[row].cells[col]))
+            {
+                empty = TRUE;
+                break;
+            }
+        }
+
+        if (!empty)
+        {
+            output_csv.rows[new_row++] = input_csv->rows[row];
+        }
+    }
+    output_csv.rows_count++; // for header
+    return output_csv;
 }
 
 s64 to_integer(String_View cell)
@@ -618,9 +694,14 @@ double to_float(String_View cell)
     return strtold(buffer, &endptr);
 }
 
+boolean is_csv_empty(CSV *csv)
+{
+    return csv->rows_count == 0 ? TRUE : FALSE;
+}
+
 boolean is_cell_empty(String_View cell)
 {
-    if (cell.size == 0 || cell.data == NULL)
+    if (cell.size == 0 || cell.data == NULL || !strncmp(cell.data, "None", cell.size) || !strncmp(cell.data, "NaN", cell.size))
     {
         return TRUE;
     }
@@ -743,7 +824,7 @@ ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows)
     u32 new_col_index = csv->cols_count;
     csv->cols_count++;
     csv->header = arena_realloc(
-                                    &tempArena,
+                                    &csv->allocator,
                                     csv->header,
                                     (csv->cols_count - 1) * sizeof(String_View),
                                     csv->cols_count * sizeof(String_View)
@@ -757,7 +838,7 @@ ERRNO append_column(CSV *csv, String_View *column_to_append, u32 rows)
     for (u32 row = 0; row < rows - 1; row++)
     {
         csv->rows[row].cells = arena_realloc(
-                                                &tempArena, 
+                                                &csv->allocator, 
                                                 csv->rows[row].cells, 
                                                 (csv->cols_count - 1) * sizeof(String_View), 
                                                 csv->cols_count * sizeof(String_View)
@@ -813,7 +894,7 @@ ERRNO append_row(CSV *csv, String_View *row_to_append, u32 cols_to_append)
     new_rows = rows + 1;
     u64 new_row_index = rows;
     csv->rows_count++;
-    csv->rows = (Row *)arena_realloc(&tempArena, csv->rows, sizeof(Row *) * (rows), sizeof(Row *) * (new_rows - 1));
+    csv->rows = (Row *)arena_realloc(&csv->allocator, csv->rows, sizeof(Row *) * (rows), sizeof(Row *) * (new_rows - 1));
     if (!csv->rows)
     {
         return 0;
@@ -874,7 +955,7 @@ String_View *csv_filter(CSV *csv, String_View column_name, boolean (*predicate)(
         return NULL;
     }
 
-    String_View *filtered_cells = arena_alloc(&tempArena, sizeof(String_View) * (*out_count));
+    String_View *filtered_cells = arena_alloc(&csv->allocator, sizeof(String_View) * (*out_count));
     if (!filtered_cells)
     {
         return NULL;
