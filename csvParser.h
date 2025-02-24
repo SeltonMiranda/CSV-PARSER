@@ -31,6 +31,8 @@ typedef unsigned char ERRNO; // For different types of errors that might occur
 #define sv_args(str) (s64)(str.size), (str.data)
 #define sv_fmt "%.*s"
 
+#define BUFFER_SIZE 8192
+
 typedef enum {
     CSV_TYPE_INTEGER = 0,
     CSV_TYPE_FLOAT,

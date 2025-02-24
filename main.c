@@ -21,15 +21,21 @@ int main() {
         printf("An error occurred\n");
         return 1;
     }
-    double mean;
-    if (!csv_sd(&csv, sv("Identifier"), &mean))
+    String_View *column = malloc(sizeof(String_View) * get_row_count(&csv));
+    for (size_t i = 0; i < get_row_count(&csv); i++)
     {
-        printf("error\n");
+        column[i] = sv("Hello World");
+    }
+
+    if (!append_column(&csv, column, get_row_count(&csv)))
+    {
+        printf("An error occurred\n");
         return 1;
     }
-    printf("mean: %.5f\n", mean);
+
     printf("--------------------------------------------------------------------------------\n");
     print_csv(&csv);
+    save_csv(NULL, &csv);
     
     deinit_csv(&csv);
     return 0;

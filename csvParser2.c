@@ -471,6 +471,65 @@ defer:
     return 0;
 }
 
+ERRNO save_csv(const char *output_file, CSV *csv)
+{
+    if (!csv)
+    {
+        return 0;
+    }
+
+    const char *path_to_file = output_file ? output_file : "out.csv";
+    FILE *target = fopen(path_to_file, "wb");
+    if (!target)
+    {
+        return 0;
+    }
+
+    char buffer[BUFFER_SIZE];
+    size_t buf_len = 0;
+    for (s64 col = 0; col < get_col_count(csv); col++)
+    {
+        size_t len = csv->header[col].size;
+        if (buf_len + len + 2 >= BUFFER_SIZE)
+        {
+            fwrite(buffer, 1, buf_len, target);
+            buf_len = 0;
+        }
+
+        memcpy(buffer + buf_len, csv->header[col].data, len);
+        buf_len += len;
+        buffer[buf_len++] = (col == get_col_count(csv) - 1) ? '\n' : ',';
+    }
+
+    fwrite(buffer, 1, buf_len, target);
+    buf_len = 0;
+    for (s64 row = 0; row < get_row_count(csv) - 1; row++)
+    {
+        for (s64 col = 0; col < get_col_count(csv); col++)
+        {
+            size_t len = csv->rows[row].cells[col].size;
+            if (buf_len + len + 2 >= BUFFER_SIZE)
+            {
+                fwrite(buffer, 1, buf_len, target);
+                buf_len = 0;
+            }
+
+            memcpy(buffer + buf_len, csv->rows[row].cells[col].data, len);
+            buf_len += len;
+            buffer[buf_len++] = (col == get_col_count(csv) - 1) ? '\n' : ',';
+        }
+    }
+
+    if (buf_len > 0)
+    {
+        fwrite(buffer, 1, buf_len, target);
+    }
+
+    fclose(target);
+    return 1;
+}
+
+
 void print_csv(CSV *csv)
 {
     for (size_t col = 0; col < csv->cols_count; col++)
