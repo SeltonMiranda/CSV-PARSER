@@ -120,7 +120,7 @@ void init_csv(CSV *csv);
 void deinit_csv(CSV *csv);
 void print_csv(CSV *csv);
 void read_csv(const char *content, CSV *csv);
-s32 save_csv(const char *output_file, CSV *csv);
+void save_csv(const char *output_file, CSV *csv);
 
 boolean is_csv_empty(CSV *csv);
 boolean is_cell_empty(String_View cell);

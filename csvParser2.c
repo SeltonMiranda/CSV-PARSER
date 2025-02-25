@@ -531,11 +531,12 @@ defer:
     return;
 }
 
-s32 save_csv(const char *output_file, CSV *csv)
+void save_csv(const char *output_file, CSV *csv)
 {
     if (!csv)
     {
-        return 0;
+        set_error(ERR_CSV_EMPTY);
+        return;
     }
 
     const char *path_to_file = output_file ? output_file : "out.csv";
@@ -543,7 +544,7 @@ s32 save_csv(const char *output_file, CSV *csv)
     if (!target)
     {
         set_error(ERR_OPEN_FILE);
-        return 0;
+        return;
     }
 
     char buffer[BUFFER_SIZE];
@@ -587,7 +588,6 @@ s32 save_csv(const char *output_file, CSV *csv)
     }
 
     fclose(target);
-    return 1;
 }
 
 
