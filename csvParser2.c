@@ -581,7 +581,6 @@ void save_csv(const char *output_file, CSV *csv)
             buffer[buf_len++] = (col == get_col_count(csv) - 1) ? '\n' : ',';
         }
     }
-
     if (buf_len > 0)
     {
         fwrite(buffer, 1, buf_len, target);
@@ -590,41 +589,43 @@ void save_csv(const char *output_file, CSV *csv)
     fclose(target);
 }
 
-
 void print_csv(CSV *csv)
 {
     for (size_t col = 0; col < csv->cols_count; col++)
     {
-        printf("%-12.*s", (int)csv->header[col].size, csv->header[col].data);
-        printf(" Type: ");
-        
-        switch (csv->type[col])
-        {
-            case CSV_TYPE_INTEGER:
-                printf("Integer");
-                break;
-            case CSV_TYPE_FLOAT:
-                printf("Float");
-                break;
-            case CSV_TYPE_BOOLEAN:
-                printf("Boolean");
-                break;
-            case CSV_TYPE_STRING:
-                printf("String");
-                break;
-            default:
-                printf("UNKNOWN");
-                break;
-        }
-        printf(" | ");
+        printf("%-15.*s", (int)csv->header[col].size, csv->header[col].data);
     }
     printf("\n");
-    printf("------------------------------------\n");
+    
+    for (size_t col = 0; col < csv->cols_count; col++)
+    {
+        printf("-------------------");
+    }
+    printf("\n");
+    
+
     for (size_t row = 0; row < csv->rows_count - 1; row++)
     {
         for (size_t col = 0; col < csv->cols_count; col++)
         {
-            printf("%-24.*s", (int)csv->rows[row].cells[col].size, csv->rows[row].cells[col].data);
+            switch (csv->type[col])
+            {
+                case CSV_TYPE_INTEGER:
+                    printf("%-15d", *((int*)csv->rows[row].cells[col].data));
+                    break;
+                case CSV_TYPE_FLOAT:
+                    printf("%-15.4f", *((float*)csv->rows[row].cells[col].data));
+                    break;
+                case CSV_TYPE_BOOLEAN:
+                    printf("%-15s", *((int*)csv->rows[row].cells[col].data) ? "True" : "False");
+                    break;
+                case CSV_TYPE_STRING:
+                    printf("%-15.*s", (int)csv->rows[row].cells[col].size, csv->rows[row].cells[col].data);
+                    break;
+                default:
+                    printf("%-15s", "UNKNOWN");
+                    break;
+            }
         }
         printf("\n");
     }

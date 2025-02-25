@@ -8,7 +8,7 @@
 int main() {
     CSV csv;
     init_csv(&csv);
-    read_csv("username.csv", &csv);
+    read_csv("tips.csv", &csv);
     if (error())
     {
         return 1;
@@ -16,6 +16,7 @@ int main() {
 
     printf("--------------------------------------------------------------------------------\n");
     print_csv(&csv);
+    save_csv(NULL, &csv);
 
     deinit_csv(&csv);
     return 0;
