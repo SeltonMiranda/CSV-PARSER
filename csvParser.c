@@ -884,6 +884,36 @@ const String_View *get_row_at(CSV *csv, u32 idx)
     return csv->rows[idx].cells;
 }
 
+const String_View *get_column(CSV *csv, String_View column_name)
+{
+    if (!csv)
+    {
+        set_error(ERR_CSV_EMPTY);
+        return NULL;
+    }
+
+    s32 column_index = get_column_index(&column_name);
+    if (column_index == -1)
+    {
+        set_error(ERR_COLUMN_NOT_FOUND);
+        return NULL;
+    }
+
+    String_View *ret = arena_alloc(&csv->allocator, sizeof(String_View) * get_row_count(csv));
+    if (!ret)
+    {
+        set_error(ERR_MEM_ALLOC);
+        return NULL;
+    }
+
+    ret[0] = csv->header[column_index];
+    for (u64 row = 0; row < get_row_count(csv) - 1; row++)
+    {
+        ret[row + 1] = csv->rows[row].cells[column_index];
+    }
+    return ret;
+}
+
 void append_column(CSV *csv, String_View *column_to_append, u32 rows)
 {
     if (!csv || !column_to_append)

@@ -50,6 +50,7 @@ typedef enum {
     ERR_EMPTY_CELL,
     ERR_CSV_OUT_OF_BOUNDS,
     ERR_CSV_DIFF_TYPE,
+    ERR_COLUMN_NOT_FOUND,
     ERR_INVALID_COLUMN,
     ERR_INVALID_ARG,
     ERR_INCONSISTENT_COLUMNS,
@@ -329,6 +330,14 @@ const String_View *get_header(CSV *csv);
  * @return: Reference to a specific row.
  */
 const String_View *get_row_at(CSV *csv, u32 idx);
+
+/*
+ * Returns a specific column. May thrown an error.
+ * @param csv: Pointer to a CSV struct.
+ * @param column_name: Column to be returned.
+ * @return column: Reference to column.
+ */
+const String_View *get_column(CSV *csv, String_View column_name);
 
 /*
  * Returns the cell from a row and column. May throws an error.
