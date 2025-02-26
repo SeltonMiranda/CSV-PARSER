@@ -125,6 +125,11 @@ void arena_free(Arena *a);
  * CSV IMPLEMENTATION
  */
 
+/*
+ * Checks if an error occured. If NIL, then nothing happened.
+ * @return boolean: True if an error occurred else false.
+ */
+
 boolean error();
 
 /*
