@@ -7,10 +7,6 @@
 #include <ctype.h>
 #include <math.h>
 
-#define ALIGNMENT 16  
-#define ALIGN_UP(x, a) (((x) + (a - 1)) & ~(a - 1))
-#define BUCKETS 8
-
 static HashTable indexTable = {0};
 static s32 globalError = NIL;
 

@@ -3,9 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/*
- * Typedefs for better visualization of data
- */
+// Typedefs
 
 typedef unsigned long int  u64;
 typedef unsigned int       u32;
@@ -19,6 +17,11 @@ typedef char      s8;
 
 typedef u8 boolean;
 
+// Typedefs
+
+
+// Defines
+
 #define TRUE 1
 #define FALSE 0
 
@@ -31,6 +34,11 @@ typedef u8 boolean;
 #define sv_fmt "%.*s"
 
 #define BUFFER_SIZE 8192
+
+#define ALIGNMENT 16  
+#define ALIGN_UP(x, a) (((x) + (a - 1)) & ~(a - 1))
+
+// Defines
 
 // Simple error system
 typedef enum {
@@ -56,6 +64,8 @@ typedef enum {
     CSV_TYPE_UNKNOWN
 } ColumnType;
 
+
+//----- Credits to tsoding: https://github.com/tsoding/arena ------
 typedef struct Region Region;
 typedef struct Region {
     u32 size;
@@ -67,6 +77,7 @@ typedef struct Region {
 typedef struct Arena {
     Region *begin, *end;
 } Arena;
+// ----------------------------------------------------------------
 
 typedef struct String_View {
     u8* data;
