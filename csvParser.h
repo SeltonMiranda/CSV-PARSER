@@ -146,10 +146,18 @@ void init_csv(CSV *csv);
 void deinit_csv(CSV *csv);
 
 /*
- * Prints the csv's content formatted
+ * Prints the csv's content formatted. May throws an error.
  * @param csv: struct CSV
  */
 void print_csv(CSV *csv);
+
+
+/*
+ * Prints a column. May throws an error.
+ * @param column: Array of rows from that column.
+ * @param rows: Size of array.
+ */
+void print_column(const String_View *column, u64 rows);
 
 /*
  * Reads a csv from a file, store its content in a CSV struct,

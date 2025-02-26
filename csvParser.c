@@ -587,6 +587,17 @@ void save_csv(const char *output_file, CSV *csv)
 
 void print_csv(CSV *csv)
 {
+    if (!csv)
+    {
+        set_error(ERR_INVALID_ARG);
+        return;
+    } 
+    else if (is_csv_empty(csv))
+    {
+        set_error(ERR_CSV_EMPTY);
+        return;
+    }
+
     for (size_t col = 0; col < csv->cols_count; col++)
     {
         printf("%-15.*s", (int)csv->header[col].size, csv->header[col].data);
@@ -624,6 +635,20 @@ void print_csv(CSV *csv)
             }
         }
         printf("\n");
+    }
+}
+
+void print_column(const String_View *column, u64 rows)
+{
+    if (!column)
+    {
+        set_error(ERR_INVALID_ARG);
+        return;
+    }
+
+    for (u64 row = 0; row < rows; row++)
+    {
+        printf(sv_fmt"\n", sv_args(column[row]));
     }
 }
 

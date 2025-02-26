@@ -3,12 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-
 int main() {
     CSV csv;
     init_csv(&csv);
-    read_csv("username.csv", &csv);
+    read_csv("tips.csv", &csv);
     if (error())
     {
         return 1;
@@ -16,7 +14,7 @@ int main() {
 
     //printf("--------------------------------------------------------------------------------\n");
     //print_csv(&csv);
-    const String_View *column = get_column(&csv, (String_View){ .data = "Identifier", .size = strlen("Identifier")});
+    const String_View *column = get_column(&csv, (String_View){ .data = "\"size\"", .size = strlen("\"size\"")});
     if (column == NULL)
     {
         if (error())
@@ -25,10 +23,7 @@ int main() {
         }
     }
 
-    for (size_t i = 0; i < get_row_count(&csv); i++)
-    {
-        printf(sv_fmt"\n", sv_args(column[i]));
-    }
+    print_column(column, get_row_count(&csv));
 
     deinit_csv(&csv);
     return 0;
